@@ -1430,6 +1430,14 @@ class BirthdayApp(ctk.CTk):
         t_start = time.perf_counter()
         now = time.time() - self.t0
 
+        # Do not let the show silently skip the camera intro when Windows
+        # could not open the webcam. Keep the scanning scene visible so the
+        # camera failure is obvious; press R to retry after fixing permissions
+        # or closing another app that is using the camera.
+        if self.phase == "scan" and self.cap is None:
+            self.t0 = time.time()
+            now = 0.0
+
         if self.phase == "scan" and now >= SCAN_SECONDS:
             self.phase = "glitch"
             self.beep(True)
