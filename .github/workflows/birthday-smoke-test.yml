@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   smoke-test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
               if had_api:
                   setattr(cv2_module, "CascadeClassifier", saved_api)
 
-          # Missing photos are skipped by the app, but are reported clearly.
+          # Missing photos are skipped by the app, but should be reported.
           missing = [f"{i}.jpg" for i in range(1, 16)
                      if not Path(f"{i}.jpg").is_file()]
           if missing:
