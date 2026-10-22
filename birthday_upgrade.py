@@ -1,15 +1,38 @@
 """Safe launcher for Pavley's 20th birthday project.
 
 The full animation remains in birthday_upgrade_original.py. This launcher
-keeps its existing visuals and adds a compatibility fallback for OpenCV builds
-that do not expose cv2.CascadeClassifier.
+keeps the original visuals, enables Windows high-DPI awareness so fullscreen
+matches the physical monitor, and falls back safely when OpenCV does not
+expose cv2.CascadeClassifier.
 
 Run with: py -3.14 birthday_upgrade.py
 """
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import ctypes
 import sys
+
+
+def enable_windows_dpi_awareness():
+    """Avoid Windows DPI virtualization making fullscreen only a quarter-screen."""
+    if sys.platform != "win32":
+        return
+
+    # Must run before the original module imports/creates any Tk windows.
+    try:
+        # PROCESS_PER_MONITOR_DPI_AWARE
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        print("[i] Windows high-DPI awareness enabled.")
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+            print("[i] Windows DPI awareness enabled (system-aware fallback).")
+        except Exception as exc:
+            print(f"[i] Could not change Windows DPI mode: {exc}")
+
+
+enable_windows_dpi_awareness()
 
 BASE_DIR = Path(__file__).resolve().parent
 ORIGINAL_FILE = BASE_DIR / "birthday_upgrade_original.py"
@@ -71,6 +94,7 @@ def main():
     print("Pavley's 20th Birthday — safe launcher")
     print("[i] Slideshow order: " + ", ".join(birthday.SLIDE_FILES))
     print("[i] Fullscreen is enabled. SPACE skips an act, R restarts, ESC/Q exits.")
+    print("[i] If photos are missing, the reel will skip them.")
     cake, downloaded = birthday.ensure_cake()
     if downloaded:
         print("[i] Using the built-in 3D cake by default; see PREFER_DOWNLOADED_CAKE.")
