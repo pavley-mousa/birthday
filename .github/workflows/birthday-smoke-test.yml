@@ -30,23 +30,24 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import numpy as np
-          import cv2
           import birthday_upgrade as launcher
 
-          # Verify the launcher points to the original full animation.
+          # Settings are applied to the imported original module.
+          app = launcher.birthday
           assert launcher.ORIGINAL_FILE.is_file(), "Original animation file missing"
-          assert launcher.PARTY_NAME == "Pavley Mousa"
-          assert launcher.PARTY_TAG == "@eng.bevo"
-          assert launcher.FULLSCREEN is True
-          assert launcher.SLIDE_FILES == [f"{i}.jpg" for i in range(1, 16)]
+          assert app.PARTY_NAME == "Pavley Mousa"
+          assert app.PARTY_TAG == "@eng.bevo"
+          assert app.SCAN_AGE == "19.99"
+          assert app.FULLSCREEN is True
+          assert app.SLIDE_FILES == [f"{i}.jpg" for i in range(1, 16)]
 
           # Exercise full-photo fitting without needing a display or camera.
           portrait = np.zeros((160, 90, 3), dtype=np.uint8)
-          fitted = launcher.birthday.fit_photo(portrait, 320, 180)
+          fitted = app.fit_photo(portrait, 320, 180)
           assert fitted.shape == (180, 320, 3), f"Unexpected fitted size: {fitted.shape}"
 
-          # Reproduce the OpenCV API-missing case that previously crashed.
-          cv2_module = launcher.birthday.cv2
+          # Reproduce the missing OpenCV API case that previously crashed.
+          cv2_module = app.cv2
           had_api = hasattr(cv2_module, "CascadeClassifier")
           saved_api = getattr(cv2_module, "CascadeClassifier", None)
           try:
@@ -57,8 +58,7 @@ jobs:
               if had_api:
                   setattr(cv2_module, "CascadeClassifier", saved_api)
 
-          # Report missing numbered images; the app should skip missing files
-          # instead of crashing, but all 15 are expected for the full reel.
+          # Missing photos are skipped by the app, but are reported clearly.
           missing = [f"{i}.jpg" for i in range(1, 16)
                      if not Path(f"{i}.jpg").is_file()]
           if missing:
