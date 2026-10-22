@@ -1062,22 +1062,97 @@ class CameraStream:
     """
 
     def __init__(self, index):
-        backend = cv2.CAP_DSHOW if os.name == "nt" else 0
-        self.cap = cv2.VideoCapture(index, backend)
-        if not self.cap.isOpened():
-            self.cap.release()
-            raise RuntimeError("camera %s unavailable" % index)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        # Windows laptops can expose the same webcam through different
+        # OpenCV backends. Try the requested index first, then a few other
+        # indexes in case an external/virtual camera is the active device.
+        if os.name == "nt":
+            backend_names = ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY")
+            backends = []
+            for backend_name in backend_names:
+                backend = getattr(cv2, backend_name, None)
+                if backend is not None and backend not in backends:
+                    backends.append(backend)
+        else:
+            backends = [None]
+
+        indexes = [index] + [i for i in range(5) if i != index]
+        self.cap = None
+        selected_index = None
+        selected_backend = None
+        errors = []
+
+        for camera_index in indexes:
+            for backend in backends:
+                cap = None
+                backend_label = "default" if backend is None else str(backend)
+                try:
+                    if backend is None:
+                        cap = cv2.VideoCapture(camera_index)
+                    else:
+                        cap = cv2.VideoCapture(camera_index, backend)
+                    if cap is not None and cap.isOpened():
+                        self.cap = cap
+                        selected_index = camera_index
+                        selected_backend = backend
+                        break
+                    errors.append("index %s/backend %s did not open" %
+                                  (camera_index, backend_label))
+                except Exception as exc:
+                    errors.append("index %s/backend %s: %s" %
+                                  (camera_index, backend_label, exc))
+                if cap is not None:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+            if self.cap is not None:
+                break
+
+        if self.cap is None:
+            details = "; ".join(errors[-6:])
+            raise RuntimeError(
+                "No webcam could be opened. Tried indexes %s with multiple "
+                "OpenCV backends. Check Windows camera privacy permissions, "
+                "and close apps that may be using the camera. %s" %
+                (indexes, details)
+            )
+
+        self.camera_index = selected_index
+        self.camera_backend = selected_backend
+        print("[+] Webcam opened: index %s, backend %s" %
+              (selected_index,
+               "default" if selected_backend is None else selected_backend))
+
+        try:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        except Exception:
+            pass
+
         self.frame = None
         self.lock = threading.Lock()
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.thread.start()
-        for _ in range(60):
+
+        # Opening can succeed while Windows still refuses to deliver frames.
+        for _ in range(100):
             if self.frame is not None:
                 break
             time.sleep(0.02)
+
+        if self.frame is None:
+            self.running = False
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.thread.join(timeout=1.0)
+            raise RuntimeError(
+                "The webcam opened but returned no frames. Check Windows "
+                "Settings > Privacy & security > Camera and close other apps "
+                "using the webcam."
+            )
 
     def _loop(self):
         while self.running:
@@ -1323,8 +1398,10 @@ class BirthdayApp(ctk.CTk):
         try:
             return CameraStream(CAM_INDEX)
         except Exception as e:
-            print("[!] No webcam on index %d (%s) - using a synthetic feed."
-                  % (CAM_INDEX, e))
+            print("[!] Webcam unavailable: %s" % e)
+            print("[i] Check Windows camera permissions and close Teams, Zoom, "
+                  "browser camera tabs, or the Windows Camera app.")
+            print("[i] Continuing with a synthetic feed until the webcam is available.")
             return None
 
     def start_scan(self):
